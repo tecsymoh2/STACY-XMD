@@ -1,6 +1,9 @@
 require("dotenv").config();
+const path = require("path");
 
 module.exports = {
+  // Where the login session and settings are stored. Point this at a persistent disk when deploying.
+  dataDir: process.env.DATA_DIR || __dirname,
   botName: "STACY XMD",
   prefix: process.env.PREFIX || ".",
   ownerNumber: (process.env.OWNER_NUMBER || "").replace(/\D/g, ""),

@@ -1,0 +1,20 @@
+services:
+  - type: worker
+    name: stacy-xmd
+    runtime: docker
+    plan: starter
+    disk:
+      name: stacy-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: PAIRING_NUMBER
+        sync: false
+      - key: OWNER_NUMBER
+        sync: false
+      - key: PREFIX
+        value: "."
+      - key: GROQ_API_KEY
+        sync: false

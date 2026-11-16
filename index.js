@@ -6,13 +6,14 @@ const {
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const fs = require("fs");
+const path = require("path");
 const config = require("./config");
 const { loadCommands, handleMessage } = require("./lib/handler");
 
 loadCommands();
 
 async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState("session");
+  const { state, saveCreds } = await useMultiFileAuthState(path.join(config.dataDir, "session"));
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
@@ -46,7 +47,7 @@ async function start() {
       const code = lastDisconnect?.error?.output?.statusCode;
       if (code === DisconnectReason.loggedOut) {
         console.log("[STACY XMD] Logged out. Deleting session, restart to pair again.");
-        fs.rmSync("session", { recursive: true, force: true });
+        fs.rmSync(path.join(config.dataDir, "session"), { recursive: true, force: true });
         process.exit(0);
       }
       console.log("[STACY XMD] Reconnecting...");
