@@ -12,6 +12,9 @@
   h1 { font-size:1.6rem; margin:12px 0 4px; letter-spacing:.5px; }
   p.sub { color:var(--muted); margin:0 0 18px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .tabs { display:flex; gap:6px; background:#0e1116; padding:4px; border-radius:10px; border:1px solid var(--line); }
+  .tabs button { margin:0; padding:10px; background:transparent; color:var(--muted); font-weight:600; }
+  .tabs button.on { background:var(--accent); color:#04210f; }
   label { display:block; font-size:.85rem; color:var(--muted); margin:12px 0 6px; }
   input { width:100%; padding:13px; border-radius:10px; border:1px solid var(--line); background:#0e1116; color:var(--text); font-size:1rem; }
   input:focus { outline:2px solid var(--accent); border-color:transparent; }
@@ -19,6 +22,8 @@
   button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); font-weight:500; margin-top:10px; }
   button:disabled { opacity:.5; }
   #code { font:700 2rem/1.2 ui-monospace,Menlo,Consolas,monospace; letter-spacing:4px; text-align:center; background:#0e1116; border:1px dashed var(--accent); border-radius:12px; padding:18px 8px; margin-top:16px; user-select:all; }
+  #qrbox { margin-top:16px; text-align:center; }
+  #qr { width:100%; max-width:300px; background:#fff; border-radius:12px; padding:6px; }
   #msg { margin-top:14px; min-height:1.4em; color:var(--muted); }
   #msg.ok { color:var(--accent); } #msg.err { color:var(--err); }
   ol { color:var(--muted); padding-left:20px; margin:14px 0 0; font-size:.92rem; }
@@ -31,18 +36,31 @@
   <h1>STACY XMD</h1>
   <p class="sub">Link your WhatsApp number to the bot.</p>
   <div class="card">
+    <div class="tabs">
+      <button id="tcode" class="on" type="button">Pairing code</button>
+      <button id="tqr" type="button">Scan QR</button>
+    </div>
     <label for="num">WhatsApp number (country code, no +)</label>
     <input id="num" type="tel" inputmode="numeric" placeholder="2547XXXXXXXX" autocomplete="off">
     <label for="pw">Access password</label>
     <input id="pw" type="password" autocomplete="off">
     <button id="go">Get pairing code</button>
+
     <div id="code" hidden></div>
-    <ol id="steps" hidden>
+    <div id="qrbox" hidden><img id="qr" alt="WhatsApp QR code"></div>
+
+    <ol id="stepsCode" hidden>
       <li>Open WhatsApp on the phone with this number</li>
       <li>Settings &gt; Linked devices &gt; Link a device</li>
       <li>Tap "Link with phone number instead"</li>
       <li>Enter the code above</li>
     </ol>
+    <ol id="stepsQr" hidden>
+      <li>Open this page on a second device (a PC or another phone)</li>
+      <li>On the phone with the WhatsApp account: Settings &gt; Linked devices &gt; Link a device</li>
+      <li>Scan the QR above. It refreshes by itself every few seconds</li>
+    </ol>
+
     <div id="msg"></div>
     <button id="un" class="ghost">Unlink this number</button>
   </div>
@@ -51,6 +69,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let poll = null;
+let mode = "code";
 
 async function api(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -58,30 +77,54 @@ async function api(path, body) {
   if (!r.ok) throw new Error(j.error || "Request failed");
   return j;
 }
-const creds = () => ({ number: $("num").value.replace(/\D/g, ""), password: $("pw").value });
+const creds = () => ({ number: $("num").value.replace(/\D/g, ""), password: $("pw").value, mode });
 function show(text, cls) { const m = $("msg"); m.textContent = text; m.className = cls || ""; }
-function reset() { clearInterval(poll); $("code").hidden = true; $("steps").hidden = true; }
+function reset() {
+  clearInterval(poll);
+  for (const id of ["code", "qrbox", "stepsCode", "stepsQr"]) $(id).hidden = true;
+}
+function setMode(m) {
+  mode = m;
+  reset();
+  $("tcode").className = m === "code" ? "on" : "";
+  $("tqr").className = m === "qr" ? "on" : "";
+  $("go").textContent = m === "code" ? "Get pairing code" : "Show QR code";
+  show("");
+}
+$("tcode").onclick = () => setMode("code");
+$("tqr").onclick = () => setMode("qr");
 
 $("go").onclick = async () => {
   reset();
   $("go").disabled = true;
-  show("Requesting a code...");
+  show(mode === "qr" ? "Preparing the QR..." : "Requesting a code...");
   try {
     const j = await api("/api/pair", creds());
     if (j.status === "linked") { show("This number is already linked.", "ok"); return; }
-    $("code").textContent = j.code.replace(/(.{4})(.{4})/, "$1-$2");
-    $("code").hidden = false;
-    $("steps").hidden = false;
-    show("Enter the code in WhatsApp. Waiting for the link...");
+
+    if (j.mode === "qr") {
+      $("qr").src = j.qr;
+      $("qrbox").hidden = false;
+      $("stepsQr").hidden = false;
+      show("Scan the QR in WhatsApp. Waiting for the link...");
+    } else {
+      $("code").textContent = j.code.replace(/(.{4})(.{4})/, "$1-$2");
+      $("code").hidden = false;
+      $("stepsCode").hidden = false;
+      show("Enter the code in WhatsApp. Waiting for the link...");
+    }
+
     let tries = 0;
+    const max = j.mode === "qr" ? 90 : 60;
     poll = setInterval(async () => {
       tries++;
       try {
         const s = await api("/api/status", creds());
         if (s.status === "linked") { reset(); show("Linked! Send .menu from that WhatsApp number.", "ok"); }
-        else if (s.status === "none" || tries > 70) { reset(); show("Code expired. Tap the button for a new one.", "err"); }
+        else if (s.status === "none" || tries > max) { reset(); show("Expired. Tap the button to start again.", "err"); }
+        else if (s.qr && j.mode === "qr") { $("qr").src = s.qr; }
       } catch (e) {}
-    }, 3000);
+    }, 2000);
   } catch (e) {
     show(e.message, "err");
   } finally {
