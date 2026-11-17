@@ -13,6 +13,7 @@ Each linked number is its own owner: it can use owner commands from its own What
 
 ## Pairing website
 - Served by the bot itself at `/`. Visitors need `PAIR_PASSWORD`.
+- Two ways to link: a pairing code typed into WhatsApp, or a QR code scanned from WhatsApp > Linked devices (open the page on a second device to scan it).
 - Wrong passwords are rate limited (5 per 10 minutes per IP).
 - `MAX_SESSIONS` caps how many numbers can be linked.
 - Anyone with the password can link or unlink a number, so share it only with people you trust, and tell them what linking allows.
