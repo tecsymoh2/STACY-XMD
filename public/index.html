@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STACY XMD - Pair</title>
+<style>
+  :root { --bg:#0e1116; --card:#171c24; --text:#e8ecf2; --muted:#8b95a5; --accent:#25d366; --err:#ff6b6b; --line:#262d38; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; display:flex; justify-content:center; padding:20px; }
+  main { width:100%; max-width:420px; }
+  h1 { font-size:1.6rem; margin:12px 0 4px; letter-spacing:.5px; }
+  p.sub { color:var(--muted); margin:0 0 18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:12px 0 6px; }
+  input { width:100%; padding:13px; border-radius:10px; border:1px solid var(--line); background:#0e1116; color:var(--text); font-size:1rem; }
+  input:focus { outline:2px solid var(--accent); border-color:transparent; }
+  button { width:100%; margin-top:16px; padding:14px; border:0; border-radius:10px; background:var(--accent); color:#04210f; font-size:1rem; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); font-weight:500; margin-top:10px; }
+  button:disabled { opacity:.5; }
+  #code { font:700 2rem/1.2 ui-monospace,Menlo,Consolas,monospace; letter-spacing:4px; text-align:center; background:#0e1116; border:1px dashed var(--accent); border-radius:12px; padding:18px 8px; margin-top:16px; user-select:all; }
+  #msg { margin-top:14px; min-height:1.4em; color:var(--muted); }
+  #msg.ok { color:var(--accent); } #msg.err { color:var(--err); }
+  ol { color:var(--muted); padding-left:20px; margin:14px 0 0; font-size:.92rem; }
+  .note { color:var(--muted); font-size:.8rem; margin-top:16px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>STACY XMD</h1>
+  <p class="sub">Link your WhatsApp number to the bot.</p>
+  <div class="card">
+    <label for="num">WhatsApp number (country code, no +)</label>
+    <input id="num" type="tel" inputmode="numeric" placeholder="2547XXXXXXXX" autocomplete="off">
+    <label for="pw">Access password</label>
+    <input id="pw" type="password" autocomplete="off">
+    <button id="go">Get pairing code</button>
+    <div id="code" hidden></div>
+    <ol id="steps" hidden>
+      <li>Open WhatsApp on the phone with this number</li>
+      <li>Settings &gt; Linked devices &gt; Link a device</li>
+      <li>Tap "Link with phone number instead"</li>
+      <li>Enter the code above</li>
+    </ol>
+    <div id="msg"></div>
+    <button id="un" class="ghost">Unlink this number</button>
+  </div>
+  <p class="note">Linking gives the bot access to read and send messages on that WhatsApp account. Only link a number you own, and unlink any time here or from WhatsApp &gt; Linked devices.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let poll = null;
+
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Request failed");
+  return j;
+}
+const creds = () => ({ number: $("num").value.replace(/\D/g, ""), password: $("pw").value });
+function show(text, cls) { const m = $("msg"); m.textContent = text; m.className = cls || ""; }
+function reset() { clearInterval(poll); $("code").hidden = true; $("steps").hidden = true; }
+
+$("go").onclick = async () => {
+  reset();
+  $("go").disabled = true;
+  show("Requesting a code...");
+  try {
+    const j = await api("/api/pair", creds());
+    if (j.status === "linked") { show("This number is already linked.", "ok"); return; }
+    $("code").textContent = j.code.replace(/(.{4})(.{4})/, "$1-$2");
+    $("code").hidden = false;
+    $("steps").hidden = false;
+    show("Enter the code in WhatsApp. Waiting for the link...");
+    let tries = 0;
+    poll = setInterval(async () => {
+      tries++;
+      try {
+        const s = await api("/api/status", creds());
+        if (s.status === "linked") { reset(); show("Linked! Send .menu from that WhatsApp number.", "ok"); }
+        else if (s.status === "none" || tries > 70) { reset(); show("Code expired. Tap the button for a new one.", "err"); }
+      } catch (e) {}
+    }, 3000);
+  } catch (e) {
+    show(e.message, "err");
+  } finally {
+    $("go").disabled = false;
+  }
+};
+
+$("un").onclick = async () => {
+  if (!confirm("Unlink this number from the bot?")) return;
+  reset();
+  try { await api("/api/unlink", creds()); show("Unlinked.", "ok"); }
+  catch (e) { show(e.message, "err"); }
+};
+</script>
+</body>
+</html>
