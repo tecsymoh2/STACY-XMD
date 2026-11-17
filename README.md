@@ -1,16 +1,31 @@
 # STACY XMD
 
-A WhatsApp bot built on the official `@whiskeysockets/baileys`.
+A multi-number WhatsApp bot built on the official `@whiskeysockets/baileys`, with its own pairing website.
+Requires Node 20+.
 
 ## Run
-1. `cp .env.example .env` and fill in `PAIRING_NUMBER` and `OWNER_NUMBER`
+1. `cp .env.example .env` and set `PAIR_PASSWORD` (and `DATABASE_URL` if you use Neon)
 2. `npm install`
 3. `npm start`
-4. Enter the printed pairing code in WhatsApp > Linked Devices > Link with phone number
+4. Open `http://localhost:3000`, enter your number and the password, then enter the code in WhatsApp > Linked devices > Link with phone number.
 
-Login is saved in `./session`, settings in `./data` (or in Neon Postgres if configured, see below). Keep them private.
-Requires Node 20+.
-Video stickers need `ffmpeg` installed (the Dockerfile includes it).
+Each linked number is its own owner: it can use owner commands from its own WhatsApp account, and its `.mode` setting is separate.
+
+## Pairing website
+- Served by the bot itself at `/`. Visitors need `PAIR_PASSWORD`.
+- Wrong passwords are rate limited (5 per 10 minutes per IP).
+- `MAX_SESSIONS` caps how many numbers can be linked.
+- Anyone with the password can link or unlink a number, so share it only with people you trust, and tell them what linking allows.
+- Pairing from the logs still works if you set `PAIRING_NUMBER`.
+
+## Storage
+Without `DATABASE_URL` logins are saved under `./sessions/<number>` and settings in `./data`.
+With `DATABASE_URL` everything is stored in the table `stacy_wa_auth` (created automatically).
+Treat the database URL and the stored logins like passwords.
+
+## Hosting
+Deploy as a web service (Dockerfile included). Free hosts sleep idle services, so point an uptime pinger at `/health` every 5 minutes.
+Run only one copy of the bot per database/prefix, or use a different `AUTH_PREFIX` per copy.
 
 ## Commands
 - General: menu, ping, alive, owner
@@ -34,15 +49,7 @@ Create `commands/hello.js`:
       },
     };
 
-Restart the bot and use `.hello`.
+Restart and use `.hello`.
 
 ## Notes
-Baileys is unofficial; WhatsApp can ban numbers. Use a spare number and avoid spam.
-
-## Hosting without a disk (Neon)
-1. Create a Neon project and copy its connection string (Neon dashboard > Connect, use the pooled one).
-2. Set it as `DATABASE_URL`. The bot creates the table `stacy_wa_auth` by itself and stores the WhatsApp login and settings there.
-3. Deploy as a web service. The bot listens on `PORT` and answers `GET /` with a short status text.
-4. Free hosts sleep idle services; point an uptime pinger at your service URL every 5 minutes to keep it awake.
-5. Run only one copy of the bot per login at a time (use a different `AUTH_PREFIX` for each copy).
-6. Treat `DATABASE_URL` like a password and never commit it.
+Baileys is unofficial; WhatsApp can ban numbers. Use spare numbers and avoid spam.
